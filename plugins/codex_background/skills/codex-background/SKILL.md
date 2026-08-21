@@ -1,75 +1,84 @@
 ---
 name: codex-background
-description: Enable, disable, inspect, configure, or replace the user's reversible local background image for the ChatGPT/Codex desktop app. Use when the user asks to turn the Codex background on or off, restore the original appearance, check background status, change the image, or adjust opacity, blur, fit, or position.
+description: Enable, disable, inspect, configure, or replace the user's reversible local background image for the ChatGPT/Codex desktop app on macOS, native Windows, or Linux. Use when the user asks to turn the background on or off, restore the original appearance, check status, change the image, or adjust opacity, blur, fit, or position.
 ---
 
 # Codex Background
 
-Manage the reversible runtime background supplied by this personal plugin.
+Manage the reversible runtime background supplied by this plugin.
 
 ## Boundaries
 
-- Never edit `/Applications/ChatGPT.app`, `app.asar`, its resources, or its code signature.
+- Never edit the installed application, `app.asar`, application resources, or its code signature.
 - Treat `../../` from this `SKILL.md` directory as the plugin root.
-- Immediate enable or full restore restarts the desktop app and interrupts the current UI session. State that clearly before running either command. Enabling or disabling login autostart never restarts the current app.
+- `start` and `restore` restart the desktop app and interrupt the current UI task. State that before running either command.
+- Enabling or disabling login autostart does not restart the already-running app.
 - The helper opens a Chromium debugging endpoint on `127.0.0.1` only while the custom background session is active. Mention this when the user asks about security.
 - Prefer the plugin script over hand-editing runtime state.
+- macOS is stable. Native Windows and Linux are experimental until their launch behavior is confirmed on the user's device. WSL Agent mode is not supported.
 
-## Commands
+## Select the command
 
-Resolve the plugin root, then use:
+Resolve the plugin root and Python command:
 
-```bash
-python3 <plugin-root>/scripts/codex_background.py doctor
-python3 <plugin-root>/scripts/codex_background.py status
-python3 <plugin-root>/scripts/codex_background.py enable-autostart
-python3 <plugin-root>/scripts/codex_background.py disable-autostart
-python3 <plugin-root>/scripts/codex_background.py start
-python3 <plugin-root>/scripts/codex_background.py restore
-python3 <plugin-root>/scripts/codex_background.py set-image /absolute/path/to/image.png
+- macOS/Linux: `python3`
+- Native Windows PowerShell: `py -3`, falling back to `python`
+
+Use:
+
+```text
+<python> <plugin-root>/scripts/codex_background.py doctor
+<python> <plugin-root>/scripts/codex_background.py status
+<python> <plugin-root>/scripts/codex_background.py enable-autostart
+<python> <plugin-root>/scripts/codex_background.py disable-autostart
+<python> <plugin-root>/scripts/codex_background.py start
+<python> <plugin-root>/scripts/codex_background.py restore
+<python> <plugin-root>/scripts/codex_background.py set-image <absolute-image-path>
 ```
 
-### Enable automatically on normal Codex launches
+Run `doctor` before the first platform mutation. If it reports WSL, ask the user to switch the Codex Agent to native Windows PowerShell. If it cannot locate the app, use the `CODEX_BACKGROUND_APP` environment variable only after the user supplies or confirms the executable path.
 
-1. Run `doctor` first.
-2. Run `enable-autostart`. It installs a per-user macOS LaunchAgent monitor and does not restart the currently running Codex app.
-3. Explain that the monitor stays alive for the login session. On a later normal Codex launch from Dock or Finder, it immediately reopens the unmodified executable with loopback-only debugging enabled, then injects and maintains the background. The user may see one brief reopen.
-4. The monitor records and ignores the Codex process that was already running when installed, protecting the active task.
-5. At a later macOS login, the monitor can start Codex directly in background mode. After the user quits, it waits for the next manual launch and does not force Codex to remain open.
-6. Use `disable-autostart` to remove the monitor without restarting Codex.
+For platform-specific behavior, validation, and autostart locations, read [references/platforms.md](references/platforms.md) only for the current operating system.
 
-### Enable
+## Enable immediately
 
-1. Run `doctor` first.
-2. Tell the user the desktop app will restart.
-3. Run `start`. It launches a detached local supervisor, quits the current app normally, directly relaunches its unmodified executable with a loopback-only debugging port, and injects the background.
-4. Do not treat loss of the current desktop connection as failure; the user should see the app reopen with the background.
+1. Run `doctor`.
+2. Tell the user the desktop app will restart and the current task connection will be interrupted.
+3. Run `start`.
+4. After the app reopens, run `status` in a new task if verification is requested. Do not treat loss of the original desktop connection as failure.
 
-### Restore
+## Enable automatically
+
+1. Run `doctor`.
+2. Run `enable-autostart`.
+3. Explain that the current app is protected and is not restarted. The monitor handles later ordinary launches; Windows/Linux also start the monitor for the current login session.
+4. Use `disable-autostart` to remove the platform login item and stop the monitor without restarting the app.
+
+## Restore
 
 1. Tell the user the desktop app will restart.
-2. Run `restore`. It stops the supervisor and relaunches ChatGPT/Codex normally, with no injection or debugging port.
+2. Run `restore`. It disables autostart, stops the helper, and relaunches the app without injection or a debugging port.
 
-### Replace the image
+## Replace the image
 
-1. Require an absolute path to a PNG, JPEG, or WebP file.
-2. Run `set-image` with that path. The script copies the image into the plugin's `assets/` directory and updates `config.json`.
-3. Run `start` to apply it. If an injected session is already active, `start` refreshes the style without modifying the application bundle.
+1. Require an absolute PNG, JPEG, or WebP path.
+2. Run `set-image`. The helper copies the image into the plugin `assets/` directory and updates `config.json`.
+3. Run `start` only after disclosing the restart behavior. If an injected session is already active, `start` refreshes the style without restarting.
 
-### Adjust appearance
+## Adjust appearance
 
 Edit only `config.json`. Keep values within these limits:
 
 - `fit`: `cover`, `contain`, or `fill`
 - `backgroundOpacity`, `overlayOpacity`, `panelOpacity`: 0 through 1
 - `blurPixels`: 0 through 40
-- `position`: CSS background-position text without punctuation beyond spaces, letters, numbers, `%`, `_`, `.` or `-`
+- `position`: CSS background-position text using spaces, letters, numbers, `%`, `_`, `.`, `+`, or `-`
 
-Run `doctor` after edits, then `start` to refresh.
+Run `doctor` after edits, then `start` to apply them. `panelOpacity` controls interface panels; `backgroundOpacity` controls only the image layer.
 
 ## Success checks
 
-- `doctor` reports a valid app bundle, config, image, and Python runtime.
-- `launchctl print gui/<uid>/com.codex-background.monitor` reports the monitor as running after `enable-autostart`.
-- `status` reports `active` and at least one injected page after enable.
-- `restore` removes the supervisor state and relaunches the app without the debugging endpoint.
+- `doctor` reports the intended platform, executable, config, image, Python runtime, and loopback port.
+- `status` reports `active` and at least one injected page after enabling.
+- `restore` relaunches the app without the debugging endpoint.
+- On experimental platforms, report the exact failing stage and preserve `.runtime/background.log` for troubleshooting; do not claim platform support from offline tests alone.

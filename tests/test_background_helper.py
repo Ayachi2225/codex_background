@@ -7,6 +7,8 @@ import importlib.util
 import json
 from pathlib import Path
 import struct
+import sys
+import tempfile
 
 
 SCRIPT = (
@@ -16,6 +18,7 @@ SCRIPT = (
     / "scripts"
     / "codex_background.py"
 )
+sys.path.insert(0, str(SCRIPT.parent))
 spec = importlib.util.spec_from_file_location("codex_background", SCRIPT)
 assert spec and spec.loader
 module = importlib.util.module_from_spec(spec)
@@ -50,7 +53,21 @@ def decode_client_frame(frame: bytes) -> bytes:
 
 def main() -> None:
     config = module.load_config()
-    launch_agent = module.launch_agent_payload()
+    from codex_background_platforms.base import (
+        PlatformContext,
+        parse_posix_process_table,
+    )
+    from codex_background_platforms.macos import MacOSPlatform
+
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        temporary = Path(temporary_directory)
+        context = PlatformContext(
+            plugin_root=temporary,
+            script_path=temporary / "codex_background.py",
+            runtime_dir=temporary / ".runtime",
+            log_path=temporary / ".runtime" / "background.log",
+        )
+        launch_agent = MacOSPlatform(context).launch_agent_payload()
     assert launch_agent["Label"] == "com.codex-background.monitor"
     assert launch_agent["ProgramArguments"][-1] == "_monitor"
     assert launch_agent["RunAtLoad"] is True
@@ -61,7 +78,8 @@ def main() -> None:
       102 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT --remote-debugging-port=9229
       103 /bin/zsh -c echo /Applications/ChatGPT.app/Contents/MacOS/ChatGPT
     """
-    assert module.parse_app_pids(process_table) == {101, 102}
+    executable = Path("/Applications/ChatGPT.app/Contents/MacOS/ChatGPT")
+    assert parse_posix_process_table(process_table, executable) == {101, 102}
     expression = module.injection_expression(config)
     assert len(expression) > 1_000
     assert "MutationObserver" in expression
@@ -71,7 +89,9 @@ def main() -> None:
     capture = CaptureSocket()
     connection = object.__new__(module.DevToolsSocket)
     connection.sock = capture
-    message = json.dumps({"id": 1, "method": "Runtime.evaluate", "params": {"expression": expression}}).encode()
+    message = json.dumps(
+        {"id": 1, "method": "Runtime.evaluate", "params": {"expression": expression}}
+    ).encode()
     connection.send_frame(message)
     assert decode_client_frame(capture.payload) == message
 
@@ -98,6 +118,19 @@ def main() -> None:
     assert injected == 1
     assert failures == 0
     assert len(calls) == 2
+
+    original_endpoint_available = module.endpoint_available
+    original_debug_pids = module.PLATFORM.app_debug_pids
+    try:
+        module.endpoint_available = lambda _port: True
+        module.PLATFORM.app_debug_pids = lambda _port: {999}
+        assert module.debug_endpoint_owned_by_app(9229) is True
+        module.PLATFORM.app_debug_pids = lambda _port: set()
+        assert module.debug_endpoint_owned_by_app(9229) is False
+    finally:
+        module.endpoint_available = original_endpoint_available
+        module.PLATFORM.app_debug_pids = original_debug_pids
+
     print("offline helper tests passed")
     print(f"injection expression bytes: {len(expression.encode('utf-8'))}")
     print(f"websocket frame bytes: {len(capture.payload)}")

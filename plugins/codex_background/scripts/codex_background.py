@@ -4,44 +4,43 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import base64
 import hashlib
 import json
 import mimetypes
 import os
 from pathlib import Path
-import plistlib
 import re
 import secrets
 import shutil
 import socket
 import struct
-import subprocess
 import sys
 import time
 from typing import Any
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
+from codex_background_platforms import BackgroundError, create_platform
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+
+SCRIPT_PATH = Path(__file__).resolve()
+SCRIPT_DIR = SCRIPT_PATH.parent
+
+
+PLUGIN_ROOT = SCRIPT_DIR.parent
 CONFIG_PATH = PLUGIN_ROOT / "config.json"
 RUNTIME_DIR = PLUGIN_ROOT / ".runtime"
 STATE_PATH = RUNTIME_DIR / "state.json"
 LOG_PATH = RUNTIME_DIR / "background.log"
 MONITOR_GUARD_PATH = RUNTIME_DIR / "monitor-guard.json"
-APP_PATH = Path("/Applications/ChatGPT.app")
-APP_BINARY = APP_PATH / "Contents" / "MacOS" / "ChatGPT"
-LAUNCH_AGENT_LABEL = "com.codex-background.monitor"
-LAUNCH_AGENT_PATH = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist"
+MONITOR_PID_PATH = RUNTIME_DIR / "monitor.pid"
 STYLE_ID = "codex-background-plugin-style"
 LAYER_ID = "codex-background-plugin-layer"
 OBSERVER_KEY = "__codexBackgroundObserver"
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
-
-
-class BackgroundError(RuntimeError):
-    pass
+PLATFORM = create_platform(PLUGIN_ROOT, SCRIPT_PATH, RUNTIME_DIR, LOG_PATH)
 
 
 def load_config() -> dict[str, Any]:
@@ -115,7 +114,9 @@ class DevToolsSocket:
         parsed = urlparse(websocket_url)
         if parsed.scheme != "ws" or not parsed.hostname or not parsed.port:
             raise BackgroundError(f"无效的 DevTools WebSocket 地址：{websocket_url}")
-        self.sock = socket.create_connection((parsed.hostname, parsed.port), timeout=timeout)
+        self.sock = socket.create_connection(
+            (parsed.hostname, parsed.port), timeout=timeout
+        )
         self.sock.settimeout(timeout)
         key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
         request = (
@@ -134,11 +135,18 @@ class DevToolsSocket:
                 raise BackgroundError("DevTools WebSocket 握手响应过大")
         status_line = response.split(b"\r\n", 1)[0]
         if b" 101 " not in status_line:
-            raise BackgroundError(f"DevTools WebSocket 握手失败：{status_line.decode(errors='replace')}")
+            raise BackgroundError(
+                f"DevTools WebSocket 握手失败：{status_line.decode(errors='replace')}"
+            )
         expected = base64.b64encode(
-            hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")).digest()
+            hashlib.sha1(
+                (key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")
+            ).digest()
         ).decode("ascii")
-        if f"sec-websocket-accept: {expected}".lower().encode("ascii") not in bytes(response).lower():
+        if (
+            f"sec-websocket-accept: {expected}".lower().encode("ascii")
+            not in bytes(response).lower()
+        ):
             raise BackgroundError("DevTools WebSocket 握手校验失败")
 
     def close(self) -> None:
@@ -177,7 +185,9 @@ class DevToolsSocket:
             mask = recv_exact(self.sock, 4) if masked else b""
             payload = recv_exact(self.sock, length)
             if masked:
-                payload = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
+                payload = bytes(
+                    byte ^ mask[index % 4] for index, byte in enumerate(payload)
+                )
             if opcode == 0x8:
                 raise BackgroundError("DevTools WebSocket 已关闭")
             if opcode == 0x9:
@@ -201,13 +211,17 @@ def cdp_evaluate(websocket_url: str, expression: str) -> Any:
                 "awaitPromise": True,
             },
         }
-        connection.send_frame(json.dumps(message, separators=(",", ":")).encode("utf-8"))
+        connection.send_frame(
+            json.dumps(message, separators=(",", ":")).encode("utf-8")
+        )
         while True:
             response = json.loads(connection.receive_text())
             if response.get("id") != 1:
                 continue
             if "error" in response:
-                raise BackgroundError(f"DevTools Runtime.evaluate 失败：{response['error']}")
+                raise BackgroundError(
+                    f"DevTools Runtime.evaluate 失败：{response['error']}"
+                )
             result = response.get("result", {}).get("result", {})
             if result.get("subtype") == "error":
                 raise BackgroundError(str(result.get("description", "页面注入失败")))
@@ -223,7 +237,9 @@ def eligible_targets(port: int) -> list[dict[str, Any]]:
         for target in targets
         if target.get("type") == "page"
         and target.get("webSocketDebuggerUrl")
-        and not str(target.get("url", "")).startswith(("devtools://", "chrome-extension://"))
+        and not str(target.get("url", "")).startswith(
+            ("devtools://", "chrome-extension://")
+        )
     ]
 
 
@@ -289,10 +305,10 @@ html[data-codex-background-image='on'] .bg-token-dropdown-background {{
   z-index: 0;
   pointer-events: none;
   background-image: linear-gradient(rgba(2, 7, 20, {overlay:.3f}), rgba(2, 7, 20, {overlay:.3f})), url({json.dumps(image_url)});
-  background-size: {config['fit']};
-  background-position: {config['position']};
+  background-size: {config["fit"]};
+  background-position: {config["position"]};
   background-repeat: no-repeat;
-  opacity: {float(config['backgroundOpacity']):.3f};
+  opacity: {float(config["backgroundOpacity"]):.3f};
   filter: blur({blur}px);
   transform: scale({scale:.4f});
 }}
@@ -387,7 +403,9 @@ def log(message: str) -> None:
 def write_state(**values: Any) -> None:
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     state = {"pid": os.getpid(), "updatedAt": time.time(), **values}
-    STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    STATE_PATH.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 def read_state() -> dict[str, Any]:
@@ -398,11 +416,7 @@ def read_state() -> dict[str, Any]:
 
 
 def pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except (OSError, ValueError):
-        return False
+    return PLATFORM.process_alive(pid)
 
 
 def stop_supervisor() -> bool:
@@ -414,10 +428,7 @@ def stop_supervisor() -> bool:
         except FileNotFoundError:
             pass
         return False
-    try:
-        os.kill(pid, 15)
-    except OSError:
-        return False
+    PLATFORM.terminate_process(pid)
     for _ in range(30):
         if not pid_alive(pid):
             break
@@ -426,76 +437,28 @@ def stop_supervisor() -> bool:
 
 
 def quit_app() -> None:
-    subprocess.run(
-        ["osascript", "-e", 'tell application id "com.openai.codex" to quit'],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=10,
-        check=False,
-    )
-    time.sleep(3)
-
-
-def parse_app_pids(process_table: str) -> set[int]:
-    prefix = str(APP_BINARY)
-    pids: set[int] = set()
-    for line in process_table.splitlines():
-        parts = line.strip().split(None, 1)
-        if len(parts) != 2:
-            continue
-        pid_text, command = parts
-        if command != prefix and not command.startswith(prefix + " "):
-            continue
-        try:
-            pids.add(int(pid_text))
-        except ValueError:
-            continue
-    return pids
+    PLATFORM.quit_app()
 
 
 def app_pids() -> set[int]:
-    result = subprocess.run(
-        ["ps", "axww", "-o", "pid=,command="],
-        capture_output=True,
-        text=True,
-        timeout=5,
-        check=False,
-    )
-    if result.returncode:
-        return set()
-    return parse_app_pids(result.stdout)
+    return PLATFORM.app_pids()
 
 
 def app_running() -> bool:
     return bool(app_pids())
 
 
-def launch_app(port: int | None) -> int:
-    if not APP_BINARY.is_file():
-        raise BackgroundError(f"找不到 ChatGPT/Codex 应用：{APP_PATH}")
-    # Launch the real executable. LaunchServices' `open --args` starts Codex but
-    # drops Chromium debugging switches in current desktop builds.
-    command = [str(APP_BINARY)]
-    if port is not None:
-        command.extend(
-            [
-                "--remote-debugging-address=127.0.0.1",
-                f"--remote-debugging-port={port}",
-                f"--remote-allow-origins=http://127.0.0.1:{port}",
-            ]
-        )
+def debug_endpoint_owned_by_app(port: int) -> bool:
+    if not endpoint_available(port):
+        return False
     try:
-        process = subprocess.Popen(
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            close_fds=True,
-        )
-    except OSError as exc:
-        raise BackgroundError(f"无法启动应用：{exc}") from exc
-    return process.pid
+        return bool(PLATFORM.app_debug_pids(port))
+    except BackgroundError:
+        return False
+
+
+def launch_app(port: int | None) -> int:
+    return PLATFORM.launch_app(port)
 
 
 def wait_for_endpoint(port: int, timeout: float = 40.0) -> bool:
@@ -508,19 +471,7 @@ def wait_for_endpoint(port: int, timeout: float = 40.0) -> bool:
 
 
 def spawn_detached(mode: str) -> int:
-    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    log_handle = LOG_PATH.open("a", encoding="utf-8")
-    process = subprocess.Popen(
-        [sys.executable, str(Path(__file__).resolve()), mode],
-        cwd=str(PLUGIN_ROOT),
-        stdin=subprocess.DEVNULL,
-        stdout=log_handle,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-        close_fds=True,
-    )
-    log_handle.close()
-    return process.pid
+    return PLATFORM.spawn_helper(mode)
 
 
 def supervise() -> int:
@@ -584,9 +535,7 @@ def restore_worker() -> int:
 
 
 def command_doctor() -> int:
-    problems: list[str] = []
-    if not APP_BINARY.is_file():
-        problems.append(f"找不到应用：{APP_PATH}")
+    problems = PLATFORM.doctor_problems()
     try:
         config = load_config()
     except BackgroundError as exc:
@@ -599,7 +548,8 @@ def command_doctor() -> int:
             print(f"✗ {problem}")
         return 1
     assert config is not None
-    print(f"✓ 应用：{APP_PATH}")
+    print(f"✓ 平台：{PLATFORM.display_name}（{PLATFORM.maturity}）")
+    print(f"✓ 应用：{PLATFORM.app_description()}")
     print(f"✓ 背景：{config['imagePath']}")
     print(f"✓ Python：{sys.version.split()[0]}")
     print(f"✓ 本地调试端口：127.0.0.1:{config['debugPort']}")
@@ -611,6 +561,7 @@ def command_status() -> int:
     port = int(config["debugPort"])
     state = read_state()
     pid = int(state.get("pid", 0) or 0)
+    monitor_pid = read_monitor_pid()
     if not endpoint_available(port):
         print("inactive：调试端口未开启，原始应用外观未被运行时注入。")
         return 1
@@ -618,24 +569,41 @@ def command_status() -> int:
     targets = eligible_targets(port)
     for target in targets:
         try:
-            result = cdp_evaluate(str(target["webSocketDebuggerUrl"]), status_expression())
+            result = cdp_evaluate(
+                str(target["webSocketDebuggerUrl"]), status_expression()
+            )
             if isinstance(result, dict) and result.get("installed"):
                 injected += 1
         except Exception:
             pass
-    supervisor = "running" if pid and pid_alive(pid) else "missing"
-    print(f"active：{injected}/{len(targets)} 个页面已注入；supervisor={supervisor}；port={port}")
+    if pid and pid_alive(pid):
+        keeper = "supervisor"
+    elif monitor_pid and pid_alive(monitor_pid):
+        keeper = "monitor"
+    else:
+        keeper = "missing"
+    print(
+        f"active：{injected}/{len(targets)} 个页面已注入；keeper={keeper}；port={port}"
+    )
     return 0 if injected else 2
 
 
 def command_start() -> int:
     config = load_config()
+    PLATFORM.find_app()
     port = int(config["debugPort"])
     stop_supervisor()
     if endpoint_available(port):
+        if not debug_endpoint_owned_by_app(port):
+            raise BackgroundError(
+                f"127.0.0.1:{port} 已被占用，但无法确认它属于 ChatGPT/Codex。"
+                "请更换 config.json 的 debugPort 后重试。"
+            )
         injected, failures = inject_all(config, force=True)
         pid = spawn_detached("_watch")
-        print(f"已刷新背景：注入 {injected} 个页面，失败 {failures} 个；后台 PID {pid}。")
+        print(
+            f"已刷新背景：注入 {injected} 个页面，失败 {failures} 个；后台 PID {pid}。"
+        )
         return 0 if injected else 2
     pid = spawn_detached("_supervise")
     print(f"背景助手已启动（PID {pid}）。应用将在数秒后重启。")
@@ -646,7 +614,7 @@ def watch() -> int:
     config = load_config()
     port = int(config["debugPort"])
     write_state(status="active", port=port)
-    while endpoint_available(port):
+    while debug_endpoint_owned_by_app(port):
         try:
             inject_all(config)
             write_state(status="active", port=port)
@@ -691,7 +659,39 @@ def clear_monitor_guard() -> None:
         pass
 
 
-def launch_managed_background(config: dict[str, Any], reason: str, quit_first: bool) -> set[int]:
+def read_monitor_pid() -> int:
+    try:
+        return int(MONITOR_PID_PATH.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def clear_monitor_pid_if_owned(pid: int) -> None:
+    if read_monitor_pid() != pid:
+        return
+    try:
+        MONITOR_PID_PATH.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def stop_monitor() -> bool:
+    pid = read_monitor_pid()
+    if pid <= 0 or pid == os.getpid() or not pid_alive(pid):
+        clear_monitor_pid_if_owned(pid)
+        return False
+    PLATFORM.terminate_process(pid)
+    for _ in range(30):
+        if not pid_alive(pid):
+            break
+        time.sleep(0.1)
+    clear_monitor_pid_if_owned(pid)
+    return True
+
+
+def launch_managed_background(
+    config: dict[str, Any], reason: str, quit_first: bool
+) -> set[int]:
     config = load_config()
     port = int(config["debugPort"])
     log(reason)
@@ -709,6 +709,13 @@ def launch_managed_background(config: dict[str, Any], reason: str, quit_first: b
 
 def monitor_app_launches() -> int:
     """Keep watching normal Codex launches and convert them to background mode."""
+    existing_pid = read_monitor_pid()
+    if existing_pid and existing_pid != os.getpid() and pid_alive(existing_pid):
+        log(f"启动监视器已运行：PID {existing_pid}")
+        return 0
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    MONITOR_PID_PATH.write_text(f"{os.getpid()}\n", encoding="utf-8")
+    atexit.register(clear_monitor_pid_if_owned, os.getpid())
     config = load_config()
     port = int(config["debugPort"])
     ignored_pids = read_monitor_guard()
@@ -716,9 +723,12 @@ def monitor_app_launches() -> int:
     missing_since: float | None = None
 
     current = app_pids()
-    if endpoint_available(port):
+    if debug_endpoint_owned_by_app(port):
         log("启动监视器：接管已经启用背景的 Codex")
         managed_pids = current
+    elif endpoint_available(port):
+        log(f"启动监视器退出：127.0.0.1:{port} 被其他进程占用")
+        return 1
     elif ignored_pids & current:
         log("启动监视器：保护安装时已经运行的 Codex，本次不重启")
     elif current:
@@ -735,7 +745,7 @@ def monitor_app_launches() -> int:
         )
 
     while True:
-        if endpoint_available(port):
+        if debug_endpoint_owned_by_app(port):
             missing_since = None
             managed_pids = app_pids() or managed_pids
             try:
@@ -744,6 +754,10 @@ def monitor_app_launches() -> int:
                 log(f"启动监视器刷新失败：{exc}")
             time.sleep(2)
             continue
+
+        if endpoint_available(port):
+            log(f"启动监视器退出：127.0.0.1:{port} 被其他进程占用")
+            return 1
 
         current = app_pids()
         if ignored_pids:
@@ -778,72 +792,34 @@ def monitor_app_launches() -> int:
         time.sleep(1)
 
 
-def launch_agent_payload() -> dict[str, Any]:
-    python = str(Path(sys.executable).resolve())
-    script = str(Path(__file__).resolve())
-    return {
-        "Label": LAUNCH_AGENT_LABEL,
-        "ProgramArguments": [python, script, "_monitor"],
-        "RunAtLoad": True,
-        "ProcessType": "Interactive",
-        "LimitLoadToSessionType": "Aqua",
-        "StandardOutPath": str(RUNTIME_DIR / "login-agent.log"),
-        "StandardErrorPath": str(RUNTIME_DIR / "login-agent.log"),
-    }
-
-
-def launchctl_domain() -> str:
-    return f"gui/{os.getuid()}"
-
-
 def command_enable_autostart() -> int:
     load_config()
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     current_pids = app_pids()
     write_monitor_guard(current_pids)
-    LAUNCH_AGENT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    LAUNCH_AGENT_PATH.write_bytes(plistlib.dumps(launch_agent_payload(), fmt=plistlib.FMT_XML))
-    subprocess.run(
-        ["launchctl", "bootout", launchctl_domain(), str(LAUNCH_AGENT_PATH)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=10,
-        check=False,
-    )
-    result = subprocess.run(
-        ["launchctl", "bootstrap", launchctl_domain(), str(LAUNCH_AGENT_PATH)],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        check=False,
-    )
-    if result.returncode:
-        detail = (result.stderr or result.stdout).strip()
-        raise BackgroundError(f"无法启用登录自动加载：{detail or result.returncode}")
-    print(f"已启用 Codex 启动监视器：{LAUNCH_AGENT_PATH}")
+    installed_at = PLATFORM.enable_autostart()
+    print(f"已启用 Codex 启动监视器：{installed_at}")
+    if not PLATFORM.autostart_starts_immediately:
+        monitor_pid = read_monitor_pid()
+        if not monitor_pid or not pid_alive(monitor_pid):
+            monitor_pid = spawn_detached("_monitor")
+            MONITOR_PID_PATH.write_text(f"{monitor_pid}\n", encoding="utf-8")
+        print(f"当前登录会话的启动监视器 PID：{monitor_pid}")
     if current_pids and not endpoint_available(int(load_config()["debugPort"])):
         print("当前 Codex 未被重启；下次普通启动 Codex 时会自动加载背景。")
     return 0
 
 
 def command_disable_autostart() -> int:
-    subprocess.run(
-        ["launchctl", "bootout", launchctl_domain(), str(LAUNCH_AGENT_PATH)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=10,
-        check=False,
-    )
-    try:
-        LAUNCH_AGENT_PATH.unlink()
-    except FileNotFoundError:
-        pass
+    PLATFORM.disable_autostart()
+    stop_monitor()
     clear_monitor_guard()
     print("已关闭 Codex 启动监视器；当前 Codex 不会被重启。")
     return 0
 
 
 def command_restore() -> int:
+    PLATFORM.find_app()
     command_disable_autostart()
     spawn_detached("_restore")
     print("恢复助手已启动。应用将在数秒后以原始方式重启。")
@@ -868,10 +844,18 @@ def command_set_image(source_text: str) -> int:
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
     config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    old_image = (PLUGIN_ROOT / str(config.get("image", "assets/background.png"))).resolve()
+    old_image = (
+        PLUGIN_ROOT / str(config.get("image", "assets/background.png"))
+    ).resolve()
     config["image"] = str(destination.relative_to(PLUGIN_ROOT))
-    CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    if old_image != destination and old_image.is_file() and old_image.parent == destination.parent:
+    CONFIG_PATH.write_text(
+        json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    if (
+        old_image != destination
+        and old_image.is_file()
+        and old_image.parent == destination.parent
+    ):
         try:
             old_image.unlink()
         except OSError:
