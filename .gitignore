@@ -1,5 +1,8 @@
 .DS_Store
 **/.DS_Store
+Thumbs.db
+Desktop.ini
+*.lnk
 
 # Runtime state and logs
 .runtime/
