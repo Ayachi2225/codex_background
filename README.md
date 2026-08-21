@@ -1,6 +1,6 @@
 # codex_background
 
-`codex_background` 是一个面向 ChatGPT/Codex 桌面应用的非官方本地插件。它通过运行时注入加载自定义背景图片，并让部分界面面板呈现半透明效果；不会修改应用包、`app.asar`、应用资源或代码签名。
+`codex_background` 是一个面向 Codex 桌面应用的非官方本地插件。它通过运行时注入加载自定义背景图片，并让部分界面面板呈现半透明效果；不会修改应用包、`app.asar`、应用资源或代码签名。
 
 > [!IMPORTANT]
 > 这不是 OpenAI 官方功能。插件只能让 Codex 网页界面的内部面板透出插件背景图，不能让整个原生窗口透出桌面。
@@ -10,12 +10,8 @@
 | 平台 | 状态 | 自动加载方式 |
 | --- | --- | --- |
 | macOS | 稳定，已实机验证 | 用户级 LaunchAgent |
-| Windows 10/11 原生 PowerShell | 实验性，代码和离线测试已完成，等待 Windows 实机验证 | 用户启动目录 `.cmd` |
-| Linux 桌面版 | 实验性，未实机验证 | XDG autostart `.desktop` |
-| Windows WSL Agent | 暂不支持 | — |
-| Web 版 | 不支持 | — |
-
-OpenAI 官方已经提供支持插件和 Skills 的 Windows 桌面应用；Linux 桌面应用目前处于预览阶段。插件的 Windows/Linux 支持状态只表示本仓库的测试成熟度，不代表官方应用的平台状态。
+| Windows 10/11 原生 PowerShell | 实验| 用户启动目录 `.cmd` |
+| Linux 桌面版 | 实验| XDG autostart `.desktop` |
 
 - [Windows 桌面应用官方说明](https://learn.chatgpt.com/docs/windows/windows-app)
 - [Linux 桌面应用官方说明](https://learn.chatgpt.com/docs/linux/linux-app)
@@ -160,7 +156,7 @@ py -3 plugins/codex_background/scripts/codex_background.py enable-autostart
 $env:CODEX_BACKGROUND_APP = "C:\path\to\ChatGPT.exe"
 ```
 
-Windows 版本最大的待验证点是 Microsoft Store/MSIX 构建是否允许直接执行 `ChatGPT.exe` 并保留 Chromium 调试参数。若应用过滤这些参数，`doctor` 可能成功，但 `start` 后调试端口不会就绪。
+<!-- Windows 版本最大的待验证点是 Microsoft Store/MSIX 构建是否允许直接执行 `ChatGPT.exe` 并保留 Chromium 调试参数。若应用过滤这些参数，`doctor` 可能成功，但 `start` 后调试端口不会就绪。 -->
 
 ## Linux 首次验证
 
