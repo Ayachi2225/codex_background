@@ -1,0 +1,33 @@
+{
+  "name": "codex_background",
+  "version": "0.1.0",
+  "description": "Apply a reversible local background image to the Codex desktop app without modifying the application bundle.",
+  "author": {
+    "name": "codex_background contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "background",
+    "appearance",
+    "theme",
+    "macos",
+    "local"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Background",
+    "shortDescription": "为 Codex 加载可撤销的本地背景图片。",
+    "longDescription": "使用本地运行时助手为 macOS Codex 桌面应用加载背景图片，不修改应用包、app.asar 或代码签名。",
+    "developerName": "Community",
+    "category": "Productivity",
+    "capabilities": [
+      "Local customization"
+    ],
+    "defaultPrompt": [
+      "开启 Codex 背景图片。",
+      "检查 Codex 背景插件状态。",
+      "恢复 Codex 原始外观。"
+    ],
+    "brandColor": "#0B5FA5"
+  }
+}

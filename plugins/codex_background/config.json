@@ -1,0 +1,10 @@
+{
+  "image": "assets/background.png",
+  "fit": "cover",
+  "position": "center center",
+  "backgroundOpacity": 1.0,
+  "overlayOpacity": 0.22,
+  "panelOpacity": 0.3,
+  "blurPixels": 0,
+  "debugPort": 9229
+}

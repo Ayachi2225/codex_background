@@ -1,0 +1,20 @@
+{
+  "name": "codex_background",
+  "interface": {
+    "displayName": "Codex Background"
+  },
+  "plugins": [
+    {
+      "name": "codex_background",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex_background"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

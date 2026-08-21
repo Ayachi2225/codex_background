@@ -1,0 +1,33 @@
+.DS_Store
+**/.DS_Store
+
+# Runtime state and logs
+.runtime/
+**/.runtime/
+*.log
+
+# Python caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# Local environments and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.mobileprovision
+
+# Editor and OS metadata
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local test output
+.pytest_cache/
+.coverage
+dist/
+build/
