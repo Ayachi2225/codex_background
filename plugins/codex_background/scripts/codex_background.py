@@ -281,7 +281,7 @@ html[data-codex-background-image='on'],
 html[data-codex-background-image='on'] body {{
   background: transparent !important;
 }}
-html[data-codex-background-image='on'] body > *:not(#{LAYER_ID}) {{
+html[data-codex-background-image='on'] body > #root {{
   position: relative;
   z-index: 1;
 }}

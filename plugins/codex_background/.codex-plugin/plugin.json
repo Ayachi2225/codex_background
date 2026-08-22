@@ -1,6 +1,6 @@
 {
   "name": "codex_background",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Apply a reversible local background image to the Codex desktop app on macOS, Windows, or Linux without modifying application files.",
   "author": {
     "name": "codex_background contributors"

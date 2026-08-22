@@ -85,6 +85,9 @@ def main() -> None:
     assert "MutationObserver" in expression
     assert "data:image/png;base64," in expression
     assert "/Applications/ChatGPT.app" not in expression
+    assert "body > #root" in expression
+    assert "body > *:not(" not in expression
+    assert "pointer-events: none" in expression
 
     capture = CaptureSocket()
     connection = object.__new__(module.DevToolsSocket)

@@ -254,6 +254,7 @@ Linux 适配默认通过 `chatgpt` 命令定位应用，通过 `/proc` 检测进
 - Windows 显示 WSL 环境：切换 Codex Agent 到 Windows 原生 PowerShell，并重新打开任务。
 - `start` 后端口未就绪：当前平台应用可能过滤 Chromium 参数，请附上 `.runtime/background.log` 和 `doctor` 输出报告问题。
 - 背景存在但面板不透明：降低 `panelOpacity`，不是 `backgroundOpacity`。
+- 选中文本后无法添加注释：升级到 `0.2.1` 或更高版本；早期版本的背景层级规则可能覆盖 Codex 的选区浮层定位。
 
 ## 卸载与恢复
 
