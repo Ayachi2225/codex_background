@@ -31,6 +31,15 @@ class MacOSPlatform(PlatformAdapter):
     def launch_agent_path(self) -> Path:
         return Path.home() / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist"
 
+    def profile_dir(self) -> Path:
+        return (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "codex_background"
+            / "Profile"
+        )
+
     def find_app(self) -> Path:
         override = os.environ.get("CODEX_BACKGROUND_APP")
         candidate = Path(override).expanduser() if override else DEFAULT_BINARY
@@ -87,10 +96,12 @@ class MacOSPlatform(PlatformAdapter):
         )
         time.sleep(3)
 
-    def launch_app(self, port: int | None) -> int:
+    def launch_app(self, port: int | None, user_data_dir: Path | None = None) -> int:
         command = [str(self.find_app())]
         if port is not None:
-            command.extend(debug_switches(port))
+            if user_data_dir is None:
+                raise BackgroundError("背景模式缺少隔离用户数据目录")
+            command.extend(debug_switches(port, user_data_dir))
         return self._popen(command).pid
 
     def launch_agent_payload(self) -> dict[str, object]:

@@ -33,6 +33,20 @@ class CaptureSocket:
         self.payload += payload
 
 
+class PortProbeSocket:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args) -> None:
+        return None
+
+    def bind(self, _address) -> None:
+        return None
+
+    def getsockname(self):
+        return ("127.0.0.1", 54321)
+
+
 def decode_client_frame(frame: bytes) -> bytes:
     assert frame[0] == 0x81
     second = frame[1]
@@ -73,6 +87,14 @@ def main() -> None:
     assert launch_agent["RunAtLoad"] is True
     assert config["backgroundOpacity"] == 1.0
     assert config["panelOpacity"] == 0.3
+    assert config["debugPort"] == 0
+    original_socket = module.socket.socket
+    try:
+        module.socket.socket = lambda *_args, **_kwargs: PortProbeSocket()
+        automatic_port = module.choose_debug_port(config)
+    finally:
+        module.socket.socket = original_socket
+    assert automatic_port == 54321
     process_table = """
       101 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT
       102 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT --remote-debugging-port=9229
@@ -88,6 +110,28 @@ def main() -> None:
     assert "body > #root" in expression
     assert "body > *:not(" not in expression
     assert "pointer-events: none" in expression
+
+    assert module.is_main_renderer_target(
+        {
+            "type": "page",
+            "url": "app://-/index.html",
+            "webSocketDebuggerUrl": "ws://127.0.0.1:9000/devtools/page/main",
+        }
+    )
+    assert not module.is_main_renderer_target(
+        {
+            "type": "page",
+            "url": "app://-/index.html?initialRoute=%2Favatar-overlay",
+            "webSocketDebuggerUrl": "ws://127.0.0.1:9000/devtools/page/overlay",
+        }
+    )
+    assert not module.is_main_renderer_target(
+        {
+            "type": "page",
+            "url": "https://example.com/",
+            "webSocketDebuggerUrl": "ws://127.0.0.1:9000/devtools/page/browser",
+        }
+    )
 
     capture = CaptureSocket()
     connection = object.__new__(module.DevToolsSocket)
@@ -113,7 +157,7 @@ def main() -> None:
             return {"installed": False}
 
         module.cdp_evaluate = fake_evaluate
-        injected, failures = module.inject_all(config)
+        injected, failures = module.inject_all(config, 9229)
     finally:
         module.eligible_targets = original_targets
         module.cdp_evaluate = original_evaluate
@@ -133,6 +177,36 @@ def main() -> None:
     finally:
         module.endpoint_available = original_endpoint_available
         module.PLATFORM.app_debug_pids = original_debug_pids
+
+    originals = (
+        module.launch_app,
+        module.wait_for_endpoint,
+        module.app_pids,
+        module.write_state,
+        module.log,
+    )
+    launches: list[int | None] = []
+    try:
+        module.launch_app = lambda port: launches.append(port) or 123
+        module.wait_for_endpoint = lambda _port: False
+        module.app_pids = lambda: {123}
+        module.write_state = lambda **_values: None
+        module.log = lambda _message: None
+        fixed_port_config = dict(config, debugPort=54321)
+        managed, selected_port, ready = module.launch_managed_background(
+            fixed_port_config, "test", quit_first=False
+        )
+    finally:
+        (
+            module.launch_app,
+            module.wait_for_endpoint,
+            module.app_pids,
+            module.write_state,
+            module.log,
+        ) = originals
+    assert launches == [selected_port]
+    assert managed == {123}
+    assert ready is False
 
     print("offline helper tests passed")
     print(f"injection expression bytes: {len(expression.encode('utf-8'))}")

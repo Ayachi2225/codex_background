@@ -68,9 +68,11 @@ def load_config() -> dict[str, Any]:
         raise BackgroundError("config.json 的 blurPixels 必须在 0 到 40 之间")
     config["blurPixels"] = blur
 
-    port = int(config.get("debugPort", 9229))
-    if not 1024 <= port <= 65535:
-        raise BackgroundError("config.json 的 debugPort 必须在 1024 到 65535 之间")
+    port = int(config.get("debugPort", 0))
+    if port != 0 and not 1024 <= port <= 65535:
+        raise BackgroundError(
+            "config.json 的 debugPort 必须是 0（自动选择）或 1024 到 65535"
+        )
     config["debugPort"] = port
 
     image = (PLUGIN_ROOT / str(config.get("image", "assets/background.png"))).resolve()
@@ -97,6 +99,37 @@ def endpoint_available(port: int) -> bool:
         return True
     except Exception:
         return False
+
+
+def choose_debug_port(config: dict[str, Any]) -> int:
+    configured = int(config["debugPort"])
+    if configured:
+        return configured
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def runtime_port(config: dict[str, Any]) -> int | None:
+    state = read_state()
+    try:
+        candidate = int(state.get("port", 0) or 0)
+    except (TypeError, ValueError):
+        candidate = 0
+    if 1024 <= candidate <= 65535:
+        return candidate
+    configured = int(config["debugPort"])
+    return configured or None
+
+
+def prepare_profile_dir() -> Path:
+    profile = PLATFORM.profile_dir()
+    profile.mkdir(parents=True, exist_ok=True)
+    try:
+        profile.chmod(0o700)
+    except OSError:
+        pass
+    return profile
 
 
 def recv_exact(sock: socket.socket, count: int) -> bytes:
@@ -230,17 +263,21 @@ def cdp_evaluate(websocket_url: str, expression: str) -> Any:
         connection.close()
 
 
+def is_main_renderer_target(target: dict[str, Any]) -> bool:
+    if target.get("type") != "page" or not target.get("webSocketDebuggerUrl"):
+        return False
+    parsed = urlparse(str(target.get("url", "")))
+    return (
+        parsed.scheme == "app"
+        and parsed.netloc == "-"
+        and parsed.path == "/index.html"
+        and not parsed.query
+    )
+
+
 def eligible_targets(port: int) -> list[dict[str, Any]]:
     targets = endpoint(port)
-    return [
-        target
-        for target in targets
-        if target.get("type") == "page"
-        and target.get("webSocketDebuggerUrl")
-        and not str(target.get("url", "")).startswith(
-            ("devtools://", "chrome-extension://")
-        )
-    ]
+    return [target for target in targets if is_main_renderer_target(target)]
 
 
 def status_expression() -> str:
@@ -359,8 +396,9 @@ def removal_expression() -> str:
 """
 
 
-def inject_all(config: dict[str, Any], force: bool = False) -> tuple[int, int]:
-    port = int(config["debugPort"])
+def inject_all(
+    config: dict[str, Any], port: int, force: bool = False
+) -> tuple[int, int]:
     targets = eligible_targets(port)
     injected = 0
     failures = 0
@@ -380,11 +418,11 @@ def inject_all(config: dict[str, Any], force: bool = False) -> tuple[int, int]:
     return injected, failures
 
 
-def remove_all(config: dict[str, Any]) -> int:
+def remove_all(config: dict[str, Any], port: int | None) -> int:
     removed = 0
-    if not endpoint_available(int(config["debugPort"])):
+    if port is None or not endpoint_available(port):
         return removed
-    for target in eligible_targets(int(config["debugPort"])):
+    for target in eligible_targets(port):
         try:
             cdp_evaluate(str(target["webSocketDebuggerUrl"]), removal_expression())
             removed += 1
@@ -458,7 +496,8 @@ def debug_endpoint_owned_by_app(port: int) -> bool:
 
 
 def launch_app(port: int | None) -> int:
-    return PLATFORM.launch_app(port)
+    profile = prepare_profile_dir() if port is not None else None
+    return PLATFORM.launch_app(port, profile)
 
 
 def wait_for_endpoint(port: int, timeout: float = 40.0) -> bool:
@@ -476,7 +515,7 @@ def spawn_detached(mode: str) -> int:
 
 def supervise() -> int:
     config = load_config()
-    port = int(config["debugPort"])
+    port = choose_debug_port(config)
     write_state(status="starting", port=port)
     log("准备重启应用并启用背景")
     quit_app()
@@ -497,7 +536,7 @@ def supervise() -> int:
     consecutive_failures = 0
     while True:
         try:
-            injected, failures = inject_all(config)
+            injected, failures = inject_all(config, port)
             if injected:
                 log(f"已向 {injected} 个页面注入背景")
             consecutive_failures = consecutive_failures + 1 if failures else 0
@@ -505,7 +544,12 @@ def supervise() -> int:
         except Exception as exc:
             consecutive_failures += 1
             log(f"后台检查失败：{exc}")
-        if consecutive_failures >= 20 or not endpoint_available(port):
+        if consecutive_failures >= 20:
+            message = "连续注入失败；为避免后台无限重试，本次运行停止维护背景"
+            write_state(status="error", port=port, error=message)
+            log(message)
+            return 1
+        if not endpoint_available(port):
             log("应用或调试端口已关闭，背景助手退出")
             break
         time.sleep(2)
@@ -518,7 +562,7 @@ def supervise() -> int:
 
 def restore_worker() -> int:
     config = load_config()
-    remove_all(config)
+    remove_all(config, runtime_port(config))
     stop_supervisor()
     log("恢复原始外观并正常重启应用")
     quit_app()
@@ -552,17 +596,23 @@ def command_doctor() -> int:
     print(f"✓ 应用：{PLATFORM.app_description()}")
     print(f"✓ 背景：{config['imagePath']}")
     print(f"✓ Python：{sys.version.split()[0]}")
-    print(f"✓ 本地调试端口：127.0.0.1:{config['debugPort']}")
+    port_text = str(config["debugPort"]) if config["debugPort"] else "自动选择"
+    print(f"✓ 本地调试端口：{port_text}（仅 127.0.0.1）")
+    print(f"✓ 隔离用户数据目录：{PLATFORM.profile_dir()}")
     return 0
 
 
 def command_status() -> int:
     config = load_config()
-    port = int(config["debugPort"])
+    port = runtime_port(config)
     state = read_state()
     pid = int(state.get("pid", 0) or 0)
     monitor_pid = read_monitor_pid()
-    if not endpoint_available(port):
+    if port is None or not endpoint_available(port):
+        error = state.get("error")
+        if error:
+            print(f"error：{error}")
+            return 2
         print("inactive：调试端口未开启，原始应用外观未被运行时注入。")
         return 1
     injected = 0
@@ -591,15 +641,15 @@ def command_status() -> int:
 def command_start() -> int:
     config = load_config()
     PLATFORM.find_app()
-    port = int(config["debugPort"])
+    port = runtime_port(config)
     stop_supervisor()
-    if endpoint_available(port):
+    if port is not None and endpoint_available(port):
         if not debug_endpoint_owned_by_app(port):
             raise BackgroundError(
                 f"127.0.0.1:{port} 已被占用，但无法确认它属于 ChatGPT/Codex。"
                 "请更换 config.json 的 debugPort 后重试。"
             )
-        injected, failures = inject_all(config, force=True)
+        injected, failures = inject_all(config, port, force=True)
         pid = spawn_detached("_watch")
         print(
             f"已刷新背景：注入 {injected} 个页面，失败 {failures} 个；后台 PID {pid}。"
@@ -612,11 +662,14 @@ def command_start() -> int:
 
 def watch() -> int:
     config = load_config()
-    port = int(config["debugPort"])
+    port = runtime_port(config)
+    if port is None:
+        log("后台刷新退出：没有可用的运行时端口")
+        return 1
     write_state(status="active", port=port)
     while debug_endpoint_owned_by_app(port):
         try:
-            inject_all(config)
+            inject_all(config, port)
             write_state(status="active", port=port)
         except Exception as exc:
             log(f"后台刷新失败：{exc}")
@@ -691,20 +744,31 @@ def stop_monitor() -> bool:
 
 def launch_managed_background(
     config: dict[str, Any], reason: str, quit_first: bool
-) -> set[int]:
-    config = load_config()
-    port = int(config["debugPort"])
+) -> tuple[set[int], int, bool]:
+    port = choose_debug_port(config)
     log(reason)
     if quit_first:
         quit_app()
-    launch_app(port)
+    write_state(status="starting", port=port)
+    try:
+        launch_app(port)
+    except Exception as exc:
+        message = f"自动启动背景失败：{exc}"
+        write_state(status="error", port=port, error=message)
+        log(message)
+        return app_pids(), port, False
     if not wait_for_endpoint(port):
         message = "自动启动背景后，本地调试端口未就绪"
+        write_state(status="error", port=port, error=message)
         log(message)
-        return set()
-    injected, failures = inject_all(config, force=True)
+        return app_pids(), port, False
+    injected, failures = inject_all(config, port, force=True)
+    ready = injected > 0 and failures == 0
+    status = "active" if ready else "error"
+    error = None if ready else "没有找到可注入的 Codex 主界面"
+    write_state(status=status, port=port, failures=failures, error=error)
     log(f"自动背景已就绪：注入 {injected} 个页面，失败 {failures} 个")
-    return app_pids()
+    return app_pids(), port, ready
 
 
 def monitor_app_launches() -> int:
@@ -717,45 +781,49 @@ def monitor_app_launches() -> int:
     MONITOR_PID_PATH.write_text(f"{os.getpid()}\n", encoding="utf-8")
     atexit.register(clear_monitor_pid_if_owned, os.getpid())
     config = load_config()
-    port = int(config["debugPort"])
+    port = runtime_port(config)
     ignored_pids = read_monitor_guard()
     managed_pids: set[int] = set()
-    missing_since: float | None = None
+    failed_pids: set[int] = set()
 
     current = app_pids()
-    if debug_endpoint_owned_by_app(port):
+    if port is not None and debug_endpoint_owned_by_app(port):
         log("启动监视器：接管已经启用背景的 Codex")
         managed_pids = current
-    elif endpoint_available(port):
+    elif port is not None and endpoint_available(port):
         log(f"启动监视器退出：127.0.0.1:{port} 被其他进程占用")
         return 1
     elif ignored_pids & current:
         log("启动监视器：保护安装时已经运行的 Codex，本次不重启")
     elif current:
-        managed_pids = launch_managed_background(
+        managed_pids, port, ready = launch_managed_background(
             config,
             "启动监视器：检测到普通 Codex 启动，自动切换为背景模式",
             quit_first=True,
         )
+        if not ready:
+            failed_pids = set(managed_pids)
     elif not ignored_pids:
-        managed_pids = launch_managed_background(
+        managed_pids, port, ready = launch_managed_background(
             config,
             "启动监视器：登录后自动启动背景 Codex",
             quit_first=False,
         )
+        if not ready:
+            failed_pids = set(managed_pids)
 
     while True:
-        if debug_endpoint_owned_by_app(port):
-            missing_since = None
+        if port is not None and debug_endpoint_owned_by_app(port):
             managed_pids = app_pids() or managed_pids
             try:
-                inject_all(config)
+                inject_all(config, port)
+                write_state(status="active", port=port)
             except Exception as exc:
                 log(f"启动监视器刷新失败：{exc}")
             time.sleep(2)
             continue
 
-        if endpoint_available(port):
+        if port is not None and endpoint_available(port):
             log(f"启动监视器退出：127.0.0.1:{port} 被其他进程占用")
             return 1
 
@@ -769,26 +837,33 @@ def monitor_app_launches() -> int:
             log("启动监视器：当前受保护的 Codex 已退出，开始接管后续启动")
 
         if managed_pids and current & managed_pids:
-            if missing_since is None:
-                missing_since = time.monotonic()
-            if time.monotonic() - missing_since < 10:
+            failed_pids = current & managed_pids
+            managed_pids.clear()
+            message = "背景连接已中断；为避免重启循环，本次运行不再自动重试"
+            write_state(status="error", port=port, error=message)
+            log(f"启动监视器：{message}")
+
+        if failed_pids:
+            if current & failed_pids:
                 time.sleep(0.5)
                 continue
-            log("启动监视器：背景端口消失但应用仍在，尝试自动修复")
-        else:
-            missing_since = None
+            failed_pids.clear()
+            port = None
+            log("启动监视器：失败的 Codex 已由用户关闭，可接管下一次启动")
 
         if not current:
             managed_pids.clear()
+            port = None
             time.sleep(0.5)
             continue
 
-        managed_pids = launch_managed_background(
+        managed_pids, port, ready = launch_managed_background(
             config,
             "启动监视器：检测到普通 Codex 启动，自动切换为背景模式",
             quit_first=True,
         )
-        missing_since = None
+        if not ready:
+            failed_pids = set(managed_pids)
         time.sleep(1)
 
 
@@ -805,7 +880,10 @@ def command_enable_autostart() -> int:
             monitor_pid = spawn_detached("_monitor")
             MONITOR_PID_PATH.write_text(f"{monitor_pid}\n", encoding="utf-8")
         print(f"当前登录会话的启动监视器 PID：{monitor_pid}")
-    if current_pids and not endpoint_available(int(load_config()["debugPort"])):
+    active_port = runtime_port(load_config())
+    if current_pids and (
+        active_port is None or not endpoint_available(active_port)
+    ):
         print("当前 Codex 未被重启；下次普通启动 Codex 时会自动加载背景。")
     return 0
 
@@ -829,7 +907,7 @@ def command_restore() -> int:
 def command_remove() -> int:
     config = load_config()
     stop_supervisor()
-    removed = remove_all(config)
+    removed = remove_all(config, runtime_port(config))
     print(f"已从 {removed} 个页面移除背景。调试端口会在下次正常重启后关闭。")
     return 0
 

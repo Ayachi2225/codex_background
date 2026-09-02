@@ -27,8 +27,9 @@ class PlatformContext:
         return Path(sys.executable).resolve()
 
 
-def debug_switches(port: int) -> list[str]:
+def debug_switches(port: int, user_data_dir: Path) -> list[str]:
     return [
+        f"--user-data-dir={user_data_dir}",
         "--remote-debugging-address=127.0.0.1",
         f"--remote-debugging-port={port}",
         f"--remote-allow-origins=http://127.0.0.1:{port}",
@@ -78,7 +79,10 @@ class PlatformAdapter:
     def quit_app(self) -> None:
         raise NotImplementedError
 
-    def launch_app(self, port: int | None) -> int:
+    def profile_dir(self) -> Path:
+        raise NotImplementedError
+
+    def launch_app(self, port: int | None, user_data_dir: Path | None = None) -> int:
         raise NotImplementedError
 
     def autostart_description(self) -> str:

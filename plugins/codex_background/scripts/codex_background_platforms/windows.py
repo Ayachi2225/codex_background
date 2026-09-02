@@ -50,6 +50,12 @@ class WindowsPlatform(PlatformAdapter):
             / STARTUP_FILENAME
         )
 
+    def profile_dir(self) -> Path:
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if not local_appdata:
+            raise BackgroundError("缺少 LOCALAPPDATA，无法创建隔离用户数据目录")
+        return Path(local_appdata) / "codex_background" / "Profile"
+
     def _powershell(self) -> str:
         command = (
             shutil.which("powershell.exe")
@@ -172,10 +178,12 @@ class WindowsPlatform(PlatformAdapter):
             )
             time.sleep(1)
 
-    def launch_app(self, port: int | None) -> int:
+    def launch_app(self, port: int | None, user_data_dir: Path | None = None) -> int:
         command = [str(self.find_app())]
         if port is not None:
-            command.extend(debug_switches(port))
+            if user_data_dir is None:
+                raise BackgroundError("背景模式缺少隔离用户数据目录")
+            command.extend(debug_switches(port, user_data_dir))
         return self._popen(command).pid
 
     def startup_file_content(self) -> str:

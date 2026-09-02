@@ -1,6 +1,6 @@
 {
   "name": "codex_background",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Apply a reversible local background image to the Codex desktop app on macOS, Windows, or Linux without modifying application files.",
   "author": {
     "name": "codex_background contributors"
@@ -19,7 +19,7 @@
   "interface": {
     "displayName": "Codex Background",
     "shortDescription": "为 Codex 加载可撤销的本地背景图片。",
-    "longDescription": "使用跨平台本地运行时助手为 Codex 桌面应用加载背景图片，不修改应用包、app.asar 或代码签名。",
+    "longDescription": "使用隔离 Chromium 配置与跨平台本地运行时助手为 Codex 桌面应用加载背景图片，不修改应用包、app.asar 或代码签名。",
     "developerName": "Community",
     "category": "Productivity",
     "capabilities": [

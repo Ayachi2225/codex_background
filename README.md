@@ -1,6 +1,6 @@
 # codex_background
 
-`codex_background` 是一个面向 Codex 桌面应用的非官方本地插件。它通过运行时注入加载自定义背景图片，并让部分界面面板呈现半透明效果；不会修改应用包、`app.asar`、应用资源或代码签名。
+`codex_background` 是一个面向 Codex 桌面应用的非官方本地插件。它通过隔离的 Chromium 用户数据目录和运行时注入加载自定义背景图片，并让部分界面面板呈现半透明效果；不会修改应用包、`app.asar`、应用资源或代码签名。
 
 > [!IMPORTANT]
 > 这不是 OpenAI 官方功能。插件只能让 Codex 网页界面的内部面板透出插件背景图，不能让整个原生窗口透出桌面。
@@ -13,6 +13,7 @@
 - [安装](#安装)
   - [从 GitHub marketplace 安装](#从-github-marketplace-安装)
   - [从本地 clone 安装](#从本地-clone-安装)
+- [更新](#更新)
 - [设置自己的背景图片](#设置自己的背景图片)
 - [使用方法](#使用方法)
   - [可双击启动器](#可双击启动器)
@@ -103,6 +104,19 @@ Set-Location codex_background
 codex plugin marketplace add (Get-Location).Path
 codex plugin add codex_background@codex_background
 ```
+
+## 更新
+
+Codex 插件安装使用版本化缓存。更新 marketplace 后应重新安装插件，并重新写入自动加载项，使它指向新版本脚本：
+
+```text
+codex plugin marketplace upgrade codex_background
+codex plugin remove codex_background@codex_background
+codex plugin add codex_background@codex_background
+<python> <plugin-root>/scripts/codex_background.py enable-autostart
+```
+
+重新安装会恢复仓库中的默认 `config.json` 和示例背景；请事先保留私人图片路径，并在新版本上重新运行 `set-image`。不要把私人图片提交到公开仓库。
 
 ## 设置自己的背景图片
 
@@ -207,23 +221,34 @@ Linux 适配默认通过 `chatgpt` 命令定位应用，通过 `/proc` 检测进
 | `overlayOpacity` | 0–1 | 深色遮罩的不透明度；越大越暗 |
 | `panelOpacity` | 0–1 | 内部面板的不透明度；越小越容易看到背景 |
 | `blurPixels` | 0–40 | 背景模糊半径 |
-| `debugPort` | 1024–65535 | 本机 Chromium 调试端口 |
+| `debugPort` | `0` 或 1024–65535 | `0` 表示每次启动自动选择本机 Chromium 调试端口 |
 
 修改后先运行 `doctor`。若背景已经启用，运行 `start` 会直接刷新样式；若尚未启用，则会重启应用。
 
 ## 工作原理
 
 1. 通用核心读取配置和本地图片。
-2. 当前平台适配器定位并重启未修改的应用可执行文件，同时加入仅监听 `127.0.0.1` 的 Chromium DevTools 参数。
-3. 助手通过 Chrome DevTools Protocol 的 `Runtime.evaluate` 注入 CSS 和背景层。
+2. 当前平台适配器定位并重启未修改的应用可执行文件，同时加入专属 `--user-data-dir` 和仅监听 `127.0.0.1` 的 Chromium DevTools 参数。现代 Chromium 不再接受对默认用户数据目录使用这些调试参数，因此该隔离目录是新架构的必要条件。
+3. 助手从 DevTools 目标中只选择 `app://-/index.html` 主界面，通过 Chrome DevTools Protocol 的 `Runtime.evaluate` 注入 CSS 和背景层；头像浮层、内置浏览器网页等目标不会被注入。
 4. 图片在本机转换为 data URL，不会上传到远端。
 5. `MutationObserver` 在界面更新时维持样式。
-6. 平台适配器分别使用 LaunchAgent、Windows 用户启动目录或 XDG autostart 维护登录监视器。
-7. 执行恢复命令会关闭自动加载并以无调试参数的方式重启应用；应用文件始终未被修改。
+6. 平台适配器分别使用 LaunchAgent、Windows 用户启动目录或 XDG autostart 维护登录监视器。若调试端口异常消失，监视器会停止本次自动尝试并等待用户关闭应用，不会形成重启循环。
+7. 执行恢复命令会关闭自动加载并以默认用户数据目录、无调试参数的方式重启应用；应用文件始终未被修改。
+
+背景模式的隔离用户数据目录：
+
+| 平台 | 路径 |
+| --- | --- |
+| macOS | `~/Library/Application Support/codex_background/Profile` |
+| Windows | `%LOCALAPPDATA%\codex_background\Profile` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/codex_background/Profile` |
+
+它与 Codex 默认 Chromium 配置分开，因此部分界面偏好可能需要在背景模式中重新设置。系统钥匙串或账户服务是否共享登录状态取决于平台和应用版本。
 
 ## 注意事项与安全
 
-- 启用背景时会开放 `127.0.0.1:<debugPort>`。它不监听局域网，但同一台设备上的其他本地进程可能访问该端口。
+- 启用背景期间会持续开放随机的 `127.0.0.1:<port>`（若配置了固定端口则使用该端口）。它不监听局域网，也没有网络侧认证，但同一台设备上的其他本地进程可能访问它并控制该隔离 renderer。不要在不信任的多用户设备上启用。
+- 隔离用户数据目录可能包含登录状态、Cookie 和本地偏好，应按敏感数据处理，不要提交、共享或同步到公开位置。插件卸载不会自动删除该目录。
 - 自动加载首次接管普通启动时，应用会短暂重开一次。
 - `start` 和 `restore` 会中断当前桌面任务连接；先等待正在生成的回复结束。
 - 应用更新可能改变 CSS 类名、renderer 结构、可执行文件路径或调试参数行为。
@@ -246,15 +271,15 @@ Linux 适配默认通过 `chatgpt` 命令定位应用，通过 `/proc` 检测进
 <python> plugins/codex_background/scripts/codex_background.py status
 ```
 
-`127.0.0.1:9229` 只有在背景模式已启用时才会响应。运行日志位于插件目录的 `.runtime/background.log`。
+实际端口会显示在 `status` 输出中；默认每次背景模式启动都会改变。运行日志位于插件目录的 `.runtime/background.log`。
 
 常见问题：
 
 - `doctor` 找不到应用：设置 `CODEX_BACKGROUND_APP`。
 - Windows 显示 WSL 环境：切换 Codex Agent 到 Windows 原生 PowerShell，并重新打开任务。
-- `start` 后端口未就绪：当前平台应用可能过滤 Chromium 参数，请附上 `.runtime/background.log` 和 `doctor` 输出报告问题。
+- `start` 后端口未就绪：运行 `status` 查看错误并检查 `.runtime/background.log`。本次应用运行不会被监视器反复重启；手动退出后可再试一次。
 - 背景存在但面板不透明：降低 `panelOpacity`，不是 `backgroundOpacity`。
-- 选中文本后无法添加注释：升级到 `0.2.1` 或更高版本；早期版本的背景层级规则可能覆盖 Codex 的选区浮层定位。
+- 选中文本后无法添加注释：升级到 `0.3.0` 或更高版本；该版本只注入主界面且背景层不接收指针事件。
 
 ## 卸载与恢复
 

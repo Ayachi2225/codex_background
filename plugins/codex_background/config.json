@@ -6,5 +6,5 @@
   "overlayOpacity": 0.22,
   "panelOpacity": 0.3,
   "blurPixels": 0,
-  "debugPort": 9229
+  "debugPort": 0
 }

@@ -44,7 +44,7 @@ def make_context(root: Path) -> PlatformContext:
     )
 
 
-def capture_launch(adapter, port: int | None) -> list[str]:
+def capture_launch(adapter, port: int | None, profile: Path | None = None) -> list[str]:
     captured: list[str] = []
 
     def fake_popen(command: list[str], **_kwargs):
@@ -52,7 +52,7 @@ def capture_launch(adapter, port: int | None) -> list[str]:
         return FakeProcess()
 
     adapter._popen = fake_popen
-    assert adapter.launch_app(port) == 4242
+    assert adapter.launch_app(port, profile) == 4242
     return captured
 
 
@@ -72,9 +72,12 @@ def main() -> None:
             assert mac.find_app() == fake_app.resolve()
             assert windows.find_app() == fake_app.resolve()
             assert linux.find_app() == fake_app.resolve()
-            assert capture_launch(mac, 9229)[1:] == debug_switches(9229)
-            assert capture_launch(windows, 9229)[1:] == debug_switches(9229)
-            assert capture_launch(linux, 9229)[1:] == debug_switches(9229)
+            profile = root / "isolated profile"
+            expected = debug_switches(9229, profile)
+            assert capture_launch(mac, 9229, profile)[1:] == expected
+            assert capture_launch(windows, 9229, profile)[1:] == expected
+            assert capture_launch(linux, 9229, profile)[1:] == expected
+            assert expected[0] == f"--user-data-dir={profile}"
             resolved_fake_app = fake_app.resolve()
             mac._process_table = lambda: (
                 f"101 {resolved_fake_app} --remote-debugging-port=9229\n"
@@ -98,6 +101,15 @@ def main() -> None:
 
         with patch.dict(
             os.environ,
+            {"LOCALAPPDATA": str(root / "LocalAppData")},
+            clear=False,
+        ):
+            assert WindowsPlatform(context).profile_dir() == (
+                root / "LocalAppData" / "codex_background" / "Profile"
+            )
+
+        with patch.dict(
+            os.environ,
             {
                 "APPDATA": str(root / "AppData"),
                 "CODEX_BACKGROUND_APP": str(fake_app),
@@ -114,10 +126,14 @@ def main() -> None:
 
         with patch.dict(
             os.environ,
-            {"XDG_CONFIG_HOME": str(root / "config")},
+            {
+                "XDG_CONFIG_HOME": str(root / "config"),
+                "XDG_DATA_HOME": str(root / "data"),
+            },
             clear=False,
         ):
             linux = LinuxPlatform(context)
+            assert linux.profile_dir() == root / "data" / "codex_background" / "Profile"
             desktop_entry = linux.desktop_entry_content()
             assert desktop_entry.startswith("[Desktop Entry]")
             assert "X-GNOME-Autostart-enabled=true" in desktop_entry

@@ -13,7 +13,8 @@ Manage the reversible runtime background supplied by this plugin.
 - Treat `../../` from this `SKILL.md` directory as the plugin root.
 - `start` and `restore` restart the desktop app and interrupt the current UI task. State that before running either command.
 - Enabling or disabling login autostart does not restart the already-running app.
-- The helper opens a Chromium debugging endpoint on `127.0.0.1` only while the custom background session is active. Mention this when the user asks about security.
+- The helper launches background mode with a separate Chromium user-data directory and opens an unauthenticated Chromium debugging endpoint on a random `127.0.0.1` port only while that session is active. Mention both facts when the user asks about security.
+- Treat the isolated profile as sensitive local data because it may hold sign-in state, cookies, and preferences. Never inspect, copy, upload, or delete it unless the user explicitly asks.
 - Prefer the plugin script over hand-editing runtime state.
 - macOS is stable. Native Windows and Linux are experimental until their launch behavior is confirmed on the user's device. WSL Agent mode is not supported.
 
@@ -73,12 +74,13 @@ Edit only `config.json`. Keep values within these limits:
 - `backgroundOpacity`, `overlayOpacity`, `panelOpacity`: 0 through 1
 - `blurPixels`: 0 through 40
 - `position`: CSS background-position text using spaces, letters, numbers, `%`, `_`, `.`, `+`, or `-`
+- `debugPort`: `0` for an automatically selected loopback port, or 1024 through 65535 for a fixed port
 
 Run `doctor` after edits, then `start` to apply them. `panelOpacity` controls interface panels; `backgroundOpacity` controls only the image layer.
 
 ## Success checks
 
-- `doctor` reports the intended platform, executable, config, image, Python runtime, and loopback port.
+- `doctor` reports the intended platform, executable, config, image, Python runtime, loopback-port policy, and isolated profile path.
 - `status` reports `active` and at least one injected page after enabling.
 - `restore` relaunches the app without the debugging endpoint.
 - On experimental platforms, report the exact failing stage and preserve `.runtime/background.log` for troubleshooting; do not claim platform support from offline tests alone.

@@ -31,6 +31,12 @@ class LinuxPlatform(PlatformAdapter):
         config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
         return config_home / "autostart" / "codex-background-monitor.desktop"
 
+    def profile_dir(self) -> Path:
+        data_home = Path(
+            os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")
+        )
+        return data_home / "codex_background" / "Profile"
+
     def find_app(self) -> Path:
         if self.running_in_wsl():
             raise BackgroundError(
@@ -118,10 +124,12 @@ class LinuxPlatform(PlatformAdapter):
         if pids:
             time.sleep(1)
 
-    def launch_app(self, port: int | None) -> int:
+    def launch_app(self, port: int | None, user_data_dir: Path | None = None) -> int:
         command = [str(self.find_app())]
         if port is not None:
-            command.extend(debug_switches(port))
+            if user_data_dir is None:
+                raise BackgroundError("背景模式缺少隔离用户数据目录")
+            command.extend(debug_switches(port, user_data_dir))
         return self._popen(command).pid
 
     def desktop_entry_content(self) -> str:
