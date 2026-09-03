@@ -221,6 +221,7 @@ Linux 适配默认通过 `chatgpt` 命令定位应用，通过 `/proc` 检测进
 | `overlayOpacity` | 0–1 | 深色遮罩的不透明度；越大越暗 |
 | `panelOpacity` | 0–1 | 内部面板的不透明度；越小越容易看到背景 |
 | `blurPixels` | 0–40 | 背景模糊半径 |
+| `maintenanceIntervalSeconds` | 10–3600 | 背景生效后的 renderer 健康检查间隔，默认 60 秒 |
 | `debugPort` | `0` 或 1024–65535 | `0` 表示每次启动自动选择本机 Chromium 调试端口 |
 
 修改后先运行 `doctor`。若背景已经启用，运行 `start` 会直接刷新样式；若尚未启用，则会重启应用。
@@ -232,8 +233,9 @@ Linux 适配默认通过 `chatgpt` 命令定位应用，通过 `/proc` 检测进
 3. 助手从 DevTools 目标中只选择 `app://-/index.html` 主界面，通过 Chrome DevTools Protocol 的 `Runtime.evaluate` 注入 CSS 和背景层；头像浮层、内置浏览器网页等目标不会被注入。
 4. 图片在本机转换为 data URL，不会上传到远端。
 5. `MutationObserver` 在界面更新时维持样式。
-6. 平台适配器分别使用 LaunchAgent、Windows 用户启动目录或 XDG autostart 维护登录监视器。若调试端口异常消失，监视器会停止本次自动尝试并等待用户关闭应用，不会形成重启循环。
-7. 执行恢复命令会关闭自动加载并以默认用户数据目录、无调试参数的方式重启应用；应用文件始终未被修改。
+6. 背景已生效后，助手默认每 60 秒检查一次 renderer；等待普通 Codex 启动时仍使用快速进程检测，避免启动后延迟近一分钟才切换背景模式。
+7. 平台适配器分别使用 LaunchAgent、Windows 用户启动目录或 XDG autostart 维护登录监视器。若调试端口异常消失，监视器会停止本次自动尝试并等待用户关闭应用，不会形成重启循环。
+8. 执行恢复命令会关闭自动加载并以默认用户数据目录、无调试参数的方式重启应用；应用文件始终未被修改。
 
 背景模式的隔离用户数据目录：
 

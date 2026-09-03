@@ -87,6 +87,7 @@ def main() -> None:
     assert launch_agent["RunAtLoad"] is True
     assert config["backgroundOpacity"] == 1.0
     assert config["panelOpacity"] == 0.3
+    assert config["maintenanceIntervalSeconds"] == 60
     assert config["debugPort"] == 0
     original_socket = module.socket.socket
     try:

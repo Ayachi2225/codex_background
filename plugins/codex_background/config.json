@@ -6,5 +6,6 @@
   "overlayOpacity": 0.22,
   "panelOpacity": 0.3,
   "blurPixels": 0,
+  "maintenanceIntervalSeconds": 60,
   "debugPort": 0
 }

@@ -68,6 +68,13 @@ def load_config() -> dict[str, Any]:
         raise BackgroundError("config.json 的 blurPixels 必须在 0 到 40 之间")
     config["blurPixels"] = blur
 
+    maintenance_interval = int(config.get("maintenanceIntervalSeconds", 60))
+    if not 10 <= maintenance_interval <= 3600:
+        raise BackgroundError(
+            "config.json 的 maintenanceIntervalSeconds 必须在 10 到 3600 之间"
+        )
+    config["maintenanceIntervalSeconds"] = maintenance_interval
+
     port = int(config.get("debugPort", 0))
     if port != 0 and not 1024 <= port <= 65535:
         raise BackgroundError(
@@ -552,7 +559,7 @@ def supervise() -> int:
         if not endpoint_available(port):
             log("应用或调试端口已关闭，背景助手退出")
             break
-        time.sleep(2)
+        time.sleep(int(config["maintenanceIntervalSeconds"]))
     try:
         STATE_PATH.unlink()
     except FileNotFoundError:
@@ -598,6 +605,7 @@ def command_doctor() -> int:
     print(f"✓ Python：{sys.version.split()[0]}")
     port_text = str(config["debugPort"]) if config["debugPort"] else "自动选择"
     print(f"✓ 本地调试端口：{port_text}（仅 127.0.0.1）")
+    print(f"✓ 背景健康检查间隔：{config['maintenanceIntervalSeconds']} 秒")
     print(f"✓ 隔离用户数据目录：{PLATFORM.profile_dir()}")
     return 0
 
@@ -673,7 +681,7 @@ def watch() -> int:
             write_state(status="active", port=port)
         except Exception as exc:
             log(f"后台刷新失败：{exc}")
-        time.sleep(2)
+        time.sleep(int(config["maintenanceIntervalSeconds"]))
     try:
         STATE_PATH.unlink()
     except FileNotFoundError:
@@ -820,7 +828,7 @@ def monitor_app_launches() -> int:
                 write_state(status="active", port=port)
             except Exception as exc:
                 log(f"启动监视器刷新失败：{exc}")
-            time.sleep(2)
+            time.sleep(int(config["maintenanceIntervalSeconds"]))
             continue
 
         if port is not None and endpoint_available(port):

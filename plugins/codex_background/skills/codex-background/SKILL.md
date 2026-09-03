@@ -74,6 +74,7 @@ Edit only `config.json`. Keep values within these limits:
 - `backgroundOpacity`, `overlayOpacity`, `panelOpacity`: 0 through 1
 - `blurPixels`: 0 through 40
 - `position`: CSS background-position text using spaces, letters, numbers, `%`, `_`, `.`, `+`, or `-`
+- `maintenanceIntervalSeconds`: 10 through 3600; controls active renderer health checks and defaults to 60
 - `debugPort`: `0` for an automatically selected loopback port, or 1024 through 65535 for a fixed port
 
 Run `doctor` after edits, then `start` to apply them. `panelOpacity` controls interface panels; `backgroundOpacity` controls only the image layer.
