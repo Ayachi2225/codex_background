@@ -109,6 +109,7 @@ def main() -> None:
     assert "data:image/png;base64," in expression
     assert "/Applications/ChatGPT.app" not in expression
     assert "body > #root" in expression
+    assert "body > #root main" in expression
     assert "body > *:not(" not in expression
     assert "pointer-events: none" in expression
 

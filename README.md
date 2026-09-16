@@ -280,6 +280,7 @@ Linux 适配默认通过 `chatgpt` 命令定位应用，通过 `/proc` 检测进
 - `doctor` 找不到应用：设置 `CODEX_BACKGROUND_APP`。
 - Windows 显示 WSL 环境：切换 Codex Agent 到 Windows 原生 PowerShell，并重新打开任务。
 - `start` 后端口未就绪：运行 `status` 查看错误并检查 `.runtime/background.log`。本次应用运行不会被监视器反复重启；手动退出后可再试一次。
+- 背景存在但主内容区恢复原色、侧边栏正常：升级到 `0.3.2` 或更高版本；新版 Codex 增加了独立的主内容表面。
 - 背景存在但面板不透明：降低 `panelOpacity`，不是 `backgroundOpacity`。
 - 选中文本后无法添加注释：升级到 `0.3.0` 或更高版本；该版本只注入主界面且背景层不接收指针事件。
 

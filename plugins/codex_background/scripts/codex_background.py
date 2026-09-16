@@ -330,6 +330,7 @@ html[data-codex-background-image='on'] body > #root {{
   z-index: 1;
 }}
 html[data-codex-background-image='on'] body > #root,
+html[data-codex-background-image='on'] body > #root main,
 html[data-codex-background-image='on'] .bg-token-main-surface-primary,
 html[data-codex-background-image='on'] .bg-surface {{
   background-color: transparent !important;
@@ -516,6 +517,18 @@ def wait_for_endpoint(port: int, timeout: float = 40.0) -> bool:
     return False
 
 
+def wait_for_main_target(port: int, timeout: float = 20.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if eligible_targets(port):
+                return True
+        except Exception:
+            pass
+        time.sleep(0.25)
+    return False
+
+
 def spawn_detached(mode: str) -> int:
     return PLATFORM.spawn_helper(mode)
 
@@ -534,6 +547,11 @@ def supervise() -> int:
         return 1
     if not wait_for_endpoint(port):
         message = "应用已启动，但本地调试端口未就绪"
+        write_state(status="error", port=port, error=message)
+        log(message)
+        return 1
+    if not wait_for_main_target(port):
+        message = "调试端口已就绪，但 Codex 主界面未出现"
         write_state(status="error", port=port, error=message)
         log(message)
         return 1
@@ -767,6 +785,11 @@ def launch_managed_background(
         return app_pids(), port, False
     if not wait_for_endpoint(port):
         message = "自动启动背景后，本地调试端口未就绪"
+        write_state(status="error", port=port, error=message)
+        log(message)
+        return app_pids(), port, False
+    if not wait_for_main_target(port):
+        message = "自动启动背景后，Codex 主界面未出现"
         write_state(status="error", port=port, error=message)
         log(message)
         return app_pids(), port, False
