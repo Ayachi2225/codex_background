@@ -218,7 +218,7 @@ Linux 适配默认通过 `chatgpt` 命令定位应用，通过 `/proc` 检测进
 | `fit` | `cover` / `contain` / `fill` | 图片适配方式 |
 | `position` | CSS `background-position` | 图片位置 |
 | `backgroundOpacity` | 0–1 | 背景图片本身的不透明度 |
-| `overlayOpacity` | 0–1 | 深色遮罩的不透明度；越大越暗 |
+| `overlayOpacity` | 0–1 | 深色遮罩的不透明度；`0` 完全不创建遮罩，越大越暗 |
 | `panelOpacity` | 0–1 | 内部面板的不透明度；越小越容易看到背景 |
 | `blurPixels` | 0–40 | 背景模糊半径 |
 | `maintenanceIntervalSeconds` | 10–3600 | 背景生效后的 renderer 健康检查间隔，默认 60 秒 |
@@ -283,6 +283,7 @@ Linux 适配默认通过 `chatgpt` 命令定位应用，通过 `/proc` 检测进
 - 背景存在但主内容区恢复原色、侧边栏正常：升级到 `0.3.2` 或更高版本；新版 Codex 增加了独立的主内容表面。
 - 更新后输入框和主内容上下边缘明显变得不透明：升级到 `0.3.3` 或更高版本；该版本适配新版 composer 与渐变遮罩。
 - `blurPixels` 已设为 `0` 但新版 Chromium 中背景仍显得模糊：升级到 `0.3.4` 或更高版本；零模糊模式不再创建滤镜合成层。
+- 背景像蒙了一层灰雾：升级到 `0.3.5` 或更高版本；默认 `overlayOpacity` 已改为 `0`，零遮罩时不再生成额外渐变层。
 - 背景存在但面板不透明：降低 `panelOpacity`，不是 `backgroundOpacity`。
 - 选中文本后无法添加注释：升级到 `0.3.0` 或更高版本；该版本只注入主界面且背景层不接收指针事件。
 

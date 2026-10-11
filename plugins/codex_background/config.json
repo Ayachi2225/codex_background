@@ -3,7 +3,7 @@
   "fit": "cover",
   "position": "center center",
   "backgroundOpacity": 1.0,
-  "overlayOpacity": 0.22,
+  "overlayOpacity": 0.0,
   "panelOpacity": 0.3,
   "blurPixels": 0,
   "maintenanceIntervalSeconds": 60,

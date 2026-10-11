@@ -86,6 +86,7 @@ def main() -> None:
     assert launch_agent["ProgramArguments"][-1] == "_monitor"
     assert launch_agent["RunAtLoad"] is True
     assert config["backgroundOpacity"] == 1.0
+    assert config["overlayOpacity"] == 0.0
     assert config["panelOpacity"] == 0.3
     assert config["maintenanceIntervalSeconds"] == 60
     assert config["debugPort"] == 0
@@ -118,6 +119,9 @@ def main() -> None:
     assert "filter: none" in expression
     assert "transform: none" in expression
     assert "blur(0px)" not in expression
+    assert "linear-gradient(rgba(2, 7, 20" not in expression
+    shaded_expression = module.injection_expression(dict(config, overlayOpacity=0.22))
+    assert "linear-gradient(rgba(2, 7, 20, 0.220)" in shaded_expression
     blurred_expression = module.injection_expression(dict(config, blurPixels=10))
     assert "filter: blur(10px)" in blurred_expression
     assert "transform: scale(1.0200)" in blurred_expression

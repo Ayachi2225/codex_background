@@ -304,6 +304,13 @@ def injection_expression(config: dict[str, Any]) -> str:
     elevated = min(0.96, panel + 0.20)
     secondary = min(0.92, panel + 0.08)
     overlay = float(config["overlayOpacity"])
+    if overlay:
+        background_image = (
+            f"linear-gradient(rgba(2, 7, 20, {overlay:.3f}), "
+            f"rgba(2, 7, 20, {overlay:.3f})), url({json.dumps(image_url)})"
+        )
+    else:
+        background_image = f"url({json.dumps(image_url)})"
     blur = int(config["blurPixels"])
     if blur:
         layer_effects = (
@@ -377,7 +384,7 @@ html[data-codex-background-image='on']
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-image: linear-gradient(rgba(2, 7, 20, {overlay:.3f}), rgba(2, 7, 20, {overlay:.3f})), url({json.dumps(image_url)});
+  background-image: {background_image};
   background-size: {config["fit"]};
   background-position: {config["position"]};
   background-repeat: no-repeat;
