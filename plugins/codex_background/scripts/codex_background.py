@@ -348,6 +348,10 @@ html[data-codex-background-image='on'] .bg-token-main-surface-primary,
 html[data-codex-background-image='on'] .bg-surface {{
   background-color: transparent !important;
 }}
+html[data-codex-background-image='on']
+  [data-app-shell-page-surface='true'] {{
+  background-color: transparent !important;
+}}
 html[data-codex-background-image='on'] .bg-surface-secondary {{
   background-color: rgba(6, 18, 42, {secondary:.3f}) !important;
 }}
