@@ -110,6 +110,9 @@ def main() -> None:
     assert "/Applications/ChatGPT.app" not in expression
     assert "body > #root" in expression
     assert "body > #root main" in expression
+    assert "data-codex-composer-root" in expression
+    assert "data-app-shell-main-content-top-fade" in expression
+    assert "data-app-action-timeline-scroll" in expression
     assert "body > *:not(" not in expression
     assert "pointer-events: none" in expression
 

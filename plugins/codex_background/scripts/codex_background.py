@@ -344,6 +344,28 @@ html[data-codex-background-image='on'] .bg-surface-elevated-secondary,
 html[data-codex-background-image='on'] .bg-token-dropdown-background {{
   background-color: rgba(5, 16, 38, {elevated:.3f}) !important;
 }}
+html[data-codex-background-image='on']
+  [data-codex-composer-root]
+  [data-composer-surface-variant='default'] {{
+  background-color: rgba(5, 16, 38, {secondary:.3f}) !important;
+}}
+html[data-codex-background-image='on']
+  [data-app-shell-main-content-top-fade] > [aria-hidden='true'] {{
+  background-image: linear-gradient(
+    to bottom,
+    rgba(3, 10, 28, {secondary:.3f}),
+    rgba(3, 10, 28, 0)
+  ) !important;
+}}
+html[data-codex-background-image='on']
+  [data-app-action-timeline-scroll]
+  [aria-hidden='true'].bg-gradient-to-t {{
+  background-image: linear-gradient(
+    to top,
+    rgba(3, 10, 28, {secondary:.3f}),
+    rgba(3, 10, 28, 0)
+  ) !important;
+}}
 #{LAYER_ID} {{
   position: fixed;
   inset: 0;
