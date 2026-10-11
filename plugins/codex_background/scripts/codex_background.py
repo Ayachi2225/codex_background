@@ -305,7 +305,13 @@ def injection_expression(config: dict[str, Any]) -> str:
     secondary = min(0.92, panel + 0.08)
     overlay = float(config["overlayOpacity"])
     blur = int(config["blurPixels"])
-    scale = 1 + blur / 500 if blur else 1
+    if blur:
+        layer_effects = (
+            f"filter: blur({blur}px);\n"
+            f"  transform: scale({1 + blur / 500:.4f});"
+        )
+    else:
+        layer_effects = "filter: none;\n  transform: none;"
 
     css = f"""
 :root[data-codex-background-image='on'] {{
@@ -376,8 +382,7 @@ html[data-codex-background-image='on']
   background-position: {config["position"]};
   background-repeat: no-repeat;
   opacity: {float(config["backgroundOpacity"]):.3f};
-  filter: blur({blur}px);
-  transform: scale({scale:.4f});
+  {layer_effects}
 }}
 """
     script = f"""

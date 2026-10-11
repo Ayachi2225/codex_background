@@ -115,6 +115,12 @@ def main() -> None:
     assert "data-app-action-timeline-scroll" in expression
     assert "body > *:not(" not in expression
     assert "pointer-events: none" in expression
+    assert "filter: none" in expression
+    assert "transform: none" in expression
+    assert "blur(0px)" not in expression
+    blurred_expression = module.injection_expression(dict(config, blurPixels=10))
+    assert "filter: blur(10px)" in blurred_expression
+    assert "transform: scale(1.0200)" in blurred_expression
 
     assert module.is_main_renderer_target(
         {
